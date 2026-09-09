@@ -11,4 +11,12 @@ export * from './dashboard';
 export * from './meta';
 export * from './whatsapp';
 export * from './uploads';
-export { apiClient, setAccessToken, setOnUnauthorized } from './client';
+export {
+  apiClient,
+  setAccessToken,
+  getAccessToken,
+  setRefreshToken,
+  getRefreshToken,
+  clearAuthStorage,
+  setOnUnauthorized,
+} from './client';

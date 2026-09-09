@@ -10,19 +10,30 @@ import {
   notificationsApi,
   settingsApi,
   setAccessToken,
+  getAccessToken,
+  setRefreshToken,
+  getRefreshToken,
+  clearAuthStorage,
   setOnUnauthorized,
 } from '../api';
 import { connectSocket, disconnectSocket } from '../api/socket';
 import config from '../config';
 
-const STORAGE_PREFIX = config.app.storagePrefix;
+const STORAGE_PREFIX = config.app?.storagePrefix || 'meta_crm_';
 const AppContext = createContext(undefined);
 
 export const AppProvider = ({ children }) => {
   // ---- Auth / session ----
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const savedUser = localStorage.getItem(`${STORAGE_PREFIX}user`);
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch {
+      return null;
+    }
+  });
   const [authLoading, setAuthLoading] = useState(true);
-  const [accessToken, setAccessTokenState] = useState(null);
+  const [accessToken, setAccessTokenState] = useState(() => getAccessToken());
   const [isDataLoading, setIsDataLoading] = useState(false);
 
   // ---- Core data (hydrated from the API) ----
@@ -75,21 +86,57 @@ export const AppProvider = ({ children }) => {
   const toggleTheme = () => setThemeState((prev) => (prev === 'dark' ? 'light' : 'dark'));
   const setTheme = (mode) => setThemeState(mode);
 
-  // ---- Bootstrapping: try to restore a session on load via the refresh-token cookie ----
+  // ---- Bootstrapping: restore session on load (localStorage + refresh token fallback) ----
   useEffect(() => {
     (async () => {
       const startTime = Date.now();
+      const storedToken = getAccessToken();
+      const storedRefresh = getRefreshToken();
+
       try {
-        const { data } = await authApi.refresh();
-        setAccessToken(data.data.accessToken);
-        setAccessTokenState(data.data.accessToken);
-        const me = await authApi.getMe();
-        setCurrentUser(me.data.data);
+        if (storedToken) {
+          try {
+            const me = await authApi.getMe();
+            setCurrentUser(me.data.data);
+            localStorage.setItem(`${STORAGE_PREFIX}user`, JSON.stringify(me.data.data));
+          } catch (meErr) {
+            if (storedRefresh) {
+              const { data } = await authApi.refresh(storedRefresh);
+              setAccessToken(data.data.accessToken);
+              setAccessTokenState(data.data.accessToken);
+              if (data.data.refreshToken) setRefreshToken(data.data.refreshToken);
+              const me = await authApi.getMe();
+              setCurrentUser(me.data.data);
+              localStorage.setItem(`${STORAGE_PREFIX}user`, JSON.stringify(me.data.data));
+            } else {
+              throw meErr;
+            }
+          }
+        } else if (storedRefresh) {
+          const { data } = await authApi.refresh(storedRefresh);
+          setAccessToken(data.data.accessToken);
+          setAccessTokenState(data.data.accessToken);
+          if (data.data.refreshToken) setRefreshToken(data.data.refreshToken);
+          const me = await authApi.getMe();
+          setCurrentUser(me.data.data);
+          localStorage.setItem(`${STORAGE_PREFIX}user`, JSON.stringify(me.data.data));
+        } else {
+          // Fallback to cookie check if available
+          const { data } = await authApi.refresh();
+          setAccessToken(data.data.accessToken);
+          setAccessTokenState(data.data.accessToken);
+          if (data.data.refreshToken) setRefreshToken(data.data.refreshToken);
+          const me = await authApi.getMe();
+          setCurrentUser(me.data.data);
+          localStorage.setItem(`${STORAGE_PREFIX}user`, JSON.stringify(me.data.data));
+        }
       } catch {
+        clearAuthStorage();
         setCurrentUser(null);
+        setAccessTokenState(null);
       } finally {
         const elapsed = Date.now() - startTime;
-        const delay = Math.max(0, 800 - elapsed);
+        const delay = Math.max(0, 300 - elapsed);
         setTimeout(() => {
           setAuthLoading(false);
         }, delay);
@@ -97,6 +144,7 @@ export const AppProvider = ({ children }) => {
     })();
 
     setOnUnauthorized(() => {
+      clearAuthStorage();
       setCurrentUser(null);
       setAccessTokenState(null);
     });
@@ -179,16 +227,25 @@ export const AppProvider = ({ children }) => {
   // ---- Auth actions ----
   const login = async (email, password) => {
     const { data } = await authApi.login(email, password);
-    setAccessToken(data.data.accessToken);
-    setAccessTokenState(data.data.accessToken);
-    setCurrentUser(data.data.user);
-    addToast(`Welcome back, ${data.data.user.name}`, 'success', 'Logged In');
+    const newAccessToken = data.data.accessToken;
+    const newRefreshToken = data.data.refreshToken;
+    const user = data.data.user;
+
+    setAccessToken(newAccessToken);
+    setAccessTokenState(newAccessToken);
+    if (newRefreshToken) setRefreshToken(newRefreshToken);
+    localStorage.setItem(`${STORAGE_PREFIX}user`, JSON.stringify(user));
+    setCurrentUser(user);
+    addToast(`Welcome back, ${user.name}`, 'success', 'Logged In');
   };
 
   const logout = async () => {
     try {
       await authApi.logout();
+    } catch {
+      // Ignore network error on logout
     } finally {
+      clearAuthStorage();
       setAccessToken(null);
       setAccessTokenState(null);
       setCurrentUser(null);
