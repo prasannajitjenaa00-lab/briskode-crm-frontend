@@ -15,7 +15,10 @@ import {
   FiClock,
   FiPhone,
   FiLayers,
-  FiCheckCircle
+  FiCheckCircle,
+  FiMail,
+  FiTrash2,
+  FiAlertTriangle
 } from 'react-icons/fi';
 import { FaFacebook, FaInstagram, FaWhatsapp } from 'react-icons/fa';
 
@@ -25,11 +28,17 @@ export const LeadsView = () => {
     leadsSubTab,
     setLeadsSubTab,
     users,
-    exportLeadsCSV
+    exportLeadsCSV,
+    deleteLead,
+    bulkDeleteLeads
   } = useApp();
 
   const [selectedLead, setSelectedLead] = useState(null);
   const [isAddLeadOpen, setIsAddLeadOpen] = useState(false);
+  const [selectedLeadIds, setSelectedLeadIds] = useState([]);
+  const [leadToDelete, setLeadToDelete] = useState(null);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -96,6 +105,56 @@ export const LeadsView = () => {
   const totalPipelineValuation = useMemo(() => {
     return filteredLeads.reduce((acc, curr) => acc + (curr.estimatedValue || 150000), 0);
   }, [filteredLeads]);
+
+  const isAllSelected =
+    processedLeads.length > 0 &&
+    processedLeads.every((l) => selectedLeadIds.includes(l.id || l._id));
+
+  const handleSelectAll = (e) => {
+    if (e.target.checked) {
+      setSelectedLeadIds(processedLeads.map((l) => l.id || l._id));
+    } else {
+      setSelectedLeadIds([]);
+    }
+  };
+
+  const handleToggleSelectLead = (id, e) => {
+    e.stopPropagation();
+    setSelectedLeadIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleConfirmSingleDelete = async () => {
+    if (!leadToDelete) return;
+    const targetId = leadToDelete.id || leadToDelete._id;
+    try {
+      setIsDeleting(true);
+      await deleteLead(targetId);
+      setSelectedLeadIds((prev) => prev.filter((id) => id !== targetId));
+      if (selectedLead && (selectedLead.id === targetId || selectedLead._id === targetId)) {
+        setSelectedLead(null);
+      }
+      setLeadToDelete(null);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    if (!selectedLeadIds.length) return;
+    try {
+      setIsDeleting(true);
+      await bulkDeleteLeads(selectedLeadIds);
+      if (selectedLead && (selectedLeadIds.includes(selectedLead.id) || selectedLeadIds.includes(selectedLead._id))) {
+        setSelectedLead(null);
+      }
+      setSelectedLeadIds([]);
+      setIsBulkDeleteModalOpen(false);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className="space-y-4 pb-12">
@@ -286,16 +345,53 @@ export const LeadsView = () => {
         </div>
       </div>
 
+      {/* Bulk Delete / Selection Action Bar */}
+      {selectedLeadIds.length > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 rounded-xl bg-rose-950/40 border border-rose-800/60 shadow-lg text-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2.5 text-rose-200">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" />
+            <span className="font-bold text-sm text-white">{selectedLeadIds.length}</span>
+            <span className="text-rose-200/90 font-medium">
+              lead{selectedLeadIds.length > 1 ? 's' : ''} selected {leadsSubTab === 'new' ? 'in New Leads queue' : ''}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSelectedLeadIds([])}
+              className="px-3 py-1.5 rounded-lg bg-navy-800 hover:bg-navy-750 text-slate-300 font-medium transition-colors border border-navy-700"
+            >
+              Deselect All
+            </button>
+            <button
+              onClick={() => setIsBulkDeleteModalOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold shadow-md transition-colors cursor-pointer"
+            >
+              <FiTrash2 className="w-3.5 h-3.5" />
+              <span>Delete Selected ({selectedLeadIds.length})</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* HRMS Inbound Leads Receiving Table */}
       <div className="bg-navy-900 border border-navy-750 rounded-xl overflow-hidden shadow-panel">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-slate-300">
             <thead className="bg-navy-950 text-slate-400 uppercase font-mono text-[10px] border-b border-navy-750">
               <tr>
+                <th className="py-3 px-3 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={isAllSelected}
+                    onChange={handleSelectAll}
+                    className="rounded border-navy-700 bg-navy-800 text-rose-500 focus:ring-0 focus:ring-offset-0 cursor-pointer w-3.5 h-3.5"
+                    title="Select all visible leads"
+                  />
+                </th>
                 <th className="py-3 px-4">Organization & Headcount</th>
-                <th className="py-3 px-4">Decision Maker / HR Contact</th>
-                <th className="py-3 px-4">Modules Inquired</th>
-                <th className="py-3 px-4">Meta Ad Attribution</th>
+                <th className="py-3 px-4">Applicant / Contact Info</th>
+                <th className="py-3 px-4">Modules & Requirements</th>
+                <th className="py-3 px-4">Meta Attribution</th>
                 <th className="py-3 px-4">Demo / Pipeline Stage</th>
                 <th className="py-3 px-4">Annual License Value</th>
                 <th className="py-3 px-4 text-right">Instant Action</th>
@@ -304,7 +400,7 @@ export const LeadsView = () => {
             <tbody className="divide-y divide-navy-800">
               {processedLeads.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     <FiTarget className="w-8 h-8 text-slate-600 mx-auto mb-2" />
                     <p className="font-semibold text-slate-300">No HRMS leads found matching your filter</p>
                     <p className="text-[11px] text-slate-500 mt-1">Try resetting the workforce size or module filters</p>
@@ -314,6 +410,13 @@ export const LeadsView = () => {
                 processedLeads.map(lead => {
                   const isInstagram = (lead.source || '').includes('Instagram');
                   const isFacebook = (lead.source || '').includes('Facebook');
+                  const isTestLead = Boolean(
+                    lead.isTestingLead ||
+                    (lead.tags || []).includes('Meta Testing Tool') ||
+                    (lead.source || '').toLowerCase().includes('testing tool') ||
+                    (lead.metaLeadId && String(lead.metaLeadId).startsWith('test:')) ||
+                    lead.testingToolRemark
+                  );
                   const cleanPhone = (lead.phone || '').replace(/[^0-9]/g, '');
                   const whatsappMsg = encodeURIComponent(
                     `Hello ${lead.fullName}, thank you for inquiring about our HRMS Software for ${lead.company}!\n\nWe saw you are looking for ${(lead.hrmsModules || ['Payroll & Attendance']).slice(0, 2).join(' & ')} for your ${lead.employeeCount || 'team'}.\n\nWhen would be a good time for a 15-minute live product walkthrough?`
@@ -321,10 +424,19 @@ export const LeadsView = () => {
 
                   return (
                     <tr
-                      key={lead.id}
+                      key={lead.id || lead._id}
                       onClick={() => setSelectedLead(lead)}
                       className="hover:bg-navy-800/50 transition-colors cursor-pointer group"
                     >
+                      {/* Selection Checkbox */}
+                      <td className="py-3 px-3 text-center" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedLeadIds.includes(lead.id || lead._id)}
+                          onChange={e => handleToggleSelectLead(lead.id || lead._id, e)}
+                          className="rounded border-navy-700 bg-navy-800 text-rose-500 focus:ring-0 focus:ring-offset-0 cursor-pointer w-3.5 h-3.5"
+                        />
+                      </td>
                       {/* Organization & Headcount */}
                       <td className="py-3 px-4">
                         <div className="flex items-start gap-2.5">
@@ -339,29 +451,46 @@ export const LeadsView = () => {
                               )}
                             </p>
                             <div className="flex items-center gap-1.5 mt-0.5">
-                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-semibold">
-                                {lead.employeeCount || '20-50 emps'}
+                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-semibold flex items-center gap-1">
+                                <FiUsers className="w-2.5 h-2.5" />
+                                <span>{lead.employeeCount || '20-50 emps'}</span>
                               </span>
                               <span className="text-[10px] text-slate-400 truncate max-w-[120px]">
                                 {lead.currentSystem || 'Excel'}
                               </span>
                             </div>
+                            {isTestLead && (
+                              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold block mt-1 w-fit">
+                                🧪 TEST TOOL LEAD
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>
 
-                      {/* HR Decision Maker */}
+                      {/* HR Decision Maker / Applicant Info */}
                       <td className="py-3 px-4">
                         <div>
-                          <p className="font-semibold text-slate-200">{lead.fullName}</p>
-                          <p className="text-[11px] text-slate-400">{lead.jobTitle || 'HR Manager'}</p>
-                          <p className="text-[10px] text-slate-500 font-mono">{lead.phone || lead.email}</p>
+                          <p className="font-bold text-slate-100">{lead.fullName}</p>
+                          <p className="text-[11px] text-slate-400 font-medium">{lead.jobTitle || 'HR Manager'}</p>
+                          <div className="flex items-center gap-1.5 text-[11px] text-sky-400 font-mono mt-1">
+                            <FiPhone className="w-3 h-3 text-sky-400 shrink-0" />
+                            <a href={`tel:${lead.phone}`} onClick={e => e.stopPropagation()} className="hover:underline">
+                              {lead.phone || 'No phone'}
+                            </a>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-mono mt-0.5">
+                            <FiMail className="w-3 h-3 text-emerald-400 shrink-0" />
+                            <a href={`mailto:${lead.email}`} onClick={e => e.stopPropagation()} className="hover:underline truncate max-w-[170px]" title={lead.email}>
+                              {lead.email || 'No email'}
+                            </a>
+                          </div>
                         </div>
                       </td>
 
-                      {/* HRMS Modules Inquired */}
+                      {/* HRMS Modules & Requirements */}
                       <td className="py-3 px-4">
-                        <div className="flex flex-wrap gap-1 max-w-[210px]">
+                        <div className="flex flex-wrap gap-1 max-w-[220px]">
                           {(lead.hrmsModules || ['Payroll & Compliance', 'Attendance & Leave']).map((mod, idx) => {
                             const shortLabel = mod
                               .replace('Automated ', '')
@@ -377,25 +506,41 @@ export const LeadsView = () => {
                             );
                           })}
                         </div>
+                        {(lead.requirements || lead.rawFieldData?.primary_interest) && (
+                          <div className="mt-1.5 text-[10px] text-amber-200/90 bg-amber-500/10 border border-amber-500/25 rounded px-2 py-1 line-clamp-2 max-w-[220px]" title={lead.requirements || lead.rawFieldData?.primary_interest}>
+                            <span className="font-semibold text-amber-300">Requires: </span>
+                            {lead.requirements || lead.rawFieldData?.primary_interest}
+                          </div>
+                        )}
                       </td>
 
                       {/* Meta Attribution */}
                       <td className="py-3 px-4">
-                        <div className="flex items-center gap-1.5">
-                          {isInstagram ? (
-                            <FaInstagram className="w-3.5 h-3.5 text-pink-400 shrink-0" />
-                          ) : (
-                            <FaFacebook className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                          )}
-                          <div className="min-w-0">
-                            <span className="font-medium text-slate-200 block text-[11px] truncate">
-                              {lead.source}
-                            </span>
-                            <span className="text-[10px] text-slate-400 truncate block max-w-[160px]">
-                              {lead.campaignName}
-                            </span>
+                        {isTestLead ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-xs shrink-0">🧪</span>
+                            <div className="min-w-0">
+                              <span className="font-bold text-amber-300 block text-[11px] truncate">Meta Testing Tool</span>
+                              <span className="text-[10px] text-slate-400 truncate block max-w-[150px]">Test Webhook Verified</span>
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            {isInstagram ? (
+                              <FaInstagram className="w-3.5 h-3.5 text-pink-400 shrink-0" />
+                            ) : (
+                              <FaFacebook className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                            )}
+                            <div className="min-w-0">
+                              <span className="font-medium text-slate-200 block text-[11px] truncate">
+                                {lead.source}
+                              </span>
+                              <span className="text-[10px] text-slate-400 truncate block max-w-[160px]">
+                                {lead.campaignName}
+                              </span>
+                            </div>
+                          </div>
+                        )}
                       </td>
 
                       {/* Demo / Pipeline Stage */}
@@ -442,6 +587,18 @@ export const LeadsView = () => {
                           >
                             <FiChevronRight className="w-3.5 h-3.5" />
                           </button>
+
+                          {/* Delete Lead Button */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setLeadToDelete(lead);
+                            }}
+                            className="p-1.5 rounded-lg bg-navy-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-navy-700 hover:border-rose-500/30 transition-colors cursor-pointer"
+                            title="Delete Lead"
+                          >
+                            <FiTrash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -465,6 +622,107 @@ export const LeadsView = () => {
         isOpen={isAddLeadOpen}
         onClose={() => setIsAddLeadOpen(false)}
       />
+
+      {/* Single Lead Delete Confirmation Modal */}
+      {leadToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-navy-900 border border-navy-750 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center shrink-0">
+                <FiAlertTriangle className="w-5 h-5 text-rose-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-100">Delete Lead Record</h3>
+                <p className="text-xs text-slate-400 mt-0.5">This action is permanent and cannot be undone.</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-navy-950/80 border border-navy-800 space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Lead Name:</span>
+                <span className="font-semibold text-slate-200">{leadToDelete.fullName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Organization:</span>
+                <span className="font-semibold text-slate-200">{leadToDelete.company || 'N/A'}</span>
+              </div>
+              {leadToDelete.email && (
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Email:</span>
+                  <span className="font-mono text-slate-300">{leadToDelete.email}</span>
+                </div>
+              )}
+              {leadToDelete.phone && (
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Phone:</span>
+                  <span className="font-mono text-slate-300">{leadToDelete.phone}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setLeadToDelete(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl bg-navy-800 hover:bg-navy-750 text-slate-300 text-xs font-semibold border border-navy-700 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSingleDelete}
+                disabled={isDeleting}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                <FiTrash2 className="w-3.5 h-3.5" />
+                <span>{isDeleting ? 'Deleting...' : 'Delete Lead'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {isBulkDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-navy-900 border border-navy-750 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center shrink-0">
+                <FiAlertTriangle className="w-5 h-5 text-rose-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-100">Delete Selected Leads</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Bulk permanent removal</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Are you sure you want to permanently delete <strong className="text-rose-300 font-bold">{selectedLeadIds.length}</strong> selected lead(s)? All interaction history, form responses, and notes will be permanently removed.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsBulkDeleteModalOpen(false)}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl bg-navy-800 hover:bg-navy-750 text-slate-300 text-xs font-semibold border border-navy-700 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmBulkDelete}
+                disabled={isDeleting}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                <FiTrash2 className="w-3.5 h-3.5" />
+                <span>{isDeleting ? 'Deleting...' : `Delete All (${selectedLeadIds.length})`}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

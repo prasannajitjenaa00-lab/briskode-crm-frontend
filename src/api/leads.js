@@ -11,4 +11,6 @@ export const leadsApi = {
   updateFollowUpAction: (id, action, date) => apiClient.patch(`/leads/${id}/follow-up-action`, { action, date }),
   addNote: (id, note) => apiClient.post(`/leads/${id}/notes`, { note }),
   exportCSV: (params) => apiClient.get('/leads/export/csv', { params, responseType: 'blob' }),
+  delete: (id) => apiClient.delete(`/leads/${id}`),
+  bulkDelete: (ids) => apiClient.post('/leads/bulk-delete', { ids }),
 };

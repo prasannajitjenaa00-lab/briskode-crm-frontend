@@ -107,6 +107,20 @@ export const AppProvider = ({ children }) => {
     if (!accessToken || !currentUser) return;
     const socket = connectSocket(accessToken);
 
+    socket.on('lead:new', (newLead) => {
+      setLeads((prev) => {
+        const id = newLead.id || newLead._id;
+        if (prev.some((l) => (l.id || l._id) === id)) return prev;
+        return [{ ...newLead, id }, ...prev];
+      });
+      addToast(
+        newLead.isTestingLead
+          ? `🧪 Test Lead from Meta Testing Tool: ${newLead.company} (${newLead.fullName})`
+          : `New Inbound Lead: ${newLead.company} (${newLead.fullName})`,
+        'success',
+        newLead.isTestingLead ? 'Meta Testing Tool Ingested' : 'New Lead Captured'
+      );
+    });
     socket.on('notification:new', (notification) => {
       setNotifications((prev) => [notification, ...prev]);
       addToast(notification.message, 'info', notification.title);
@@ -341,6 +355,26 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const deleteLead = async (leadId) => {
+    try {
+      await leadsApi.delete(leadId);
+      setLeads((prev) => prev.filter((l) => l.id !== leadId && l._id !== leadId));
+      addToast('Lead deleted successfully', 'warning', 'Lead Removed');
+    } catch (err) {
+      handleApiError(err, 'Could not delete lead');
+    }
+  };
+
+  const bulkDeleteLeads = async (leadIds) => {
+    try {
+      await leadsApi.bulkDelete(leadIds);
+      setLeads((prev) => prev.filter((l) => !leadIds.includes(l.id) && !leadIds.includes(l._id)));
+      addToast(`${leadIds.length} lead(s) deleted successfully`, 'warning', 'Leads Removed');
+    } catch (err) {
+      handleApiError(err, 'Could not delete selected leads');
+    }
+  };
+
   // ---- Invoices ----
   const createInvoice = async (invoiceData) => {
     try {
@@ -541,6 +575,8 @@ export const AppProvider = ({ children }) => {
         toggleCampaignStatus,
         addLead,
         updateLeadStatus,
+        deleteLead,
+        bulkDeleteLeads,
         assignLead,
         exportLeadsCSV,
         createInvoice,

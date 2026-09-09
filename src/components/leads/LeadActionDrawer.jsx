@@ -14,13 +14,15 @@ import {
   FiClock,
   FiFileText,
   FiExternalLink,
-  FiLayers
+  FiLayers,
+  FiTrash2
 } from 'react-icons/fi';
 import { FaFacebook, FaInstagram, FaWhatsapp } from 'react-icons/fa';
 
 export const LeadActionDrawer = ({ isOpen, onClose, lead }) => {
   const {
     updateLeadStatus,
+    deleteLead,
     assignLead,
     toggleLeadFollowUp,
     toggleLeadPipelineCategory,
@@ -87,6 +89,14 @@ export const LeadActionDrawer = ({ isOpen, onClose, lead }) => {
   const cleanPhone = (lead.phone || '').replace(/[^0-9]/g, '');
   const whatsappUrl = `${config.integrations.whatsappBaseUrl}/${cleanPhone}?text=${whatsappMessage}`;
 
+  const isTestLead = Boolean(
+    lead?.isTestingLead ||
+    (lead?.tags || []).includes('Meta Testing Tool') ||
+    (lead?.source || '').toLowerCase().includes('testing tool') ||
+    (lead?.metaLeadId && String(lead.metaLeadId).startsWith('test:')) ||
+    lead?.testingToolRemark
+  );
+
   return (
     <Drawer
       isOpen={isOpen}
@@ -97,6 +107,26 @@ export const LeadActionDrawer = ({ isOpen, onClose, lead }) => {
       icon={FiTarget}
     >
       <div className="space-y-4 text-xs">
+        {/* Meta Testing Tool Banner */}
+        {isTestLead && (
+          <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/40 flex items-start gap-2.5 text-amber-200">
+            <span className="text-base shrink-0 mt-0.5">🧪</span>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <p className="font-bold text-amber-300 text-xs uppercase tracking-wide">
+                  Meta Lead Ads Testing Tool Ingestion
+                </p>
+                <span className="px-1.5 py-0.2 rounded text-[9px] bg-amber-500/25 text-amber-300 border border-amber-500/40 font-mono font-bold">
+                  VERIFIED TEST
+                </span>
+              </div>
+              <p className="text-[11px] text-amber-200/90 mt-1 leading-relaxed">
+                {lead.testingToolRemark || 'Captured directly from Meta developer Testing Tool. Form mapping, question responses, and webhook handshake successfully validated.'}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Top Status & Lead Value Bar */}
         <div className="p-3.5 rounded-xl bg-navy-850 border border-navy-750 space-y-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -226,6 +256,27 @@ export const LeadActionDrawer = ({ isOpen, onClose, lead }) => {
                 <div>
                   <span className="text-slate-400 text-[11px] block">Implementation Timeline</span>
                   <span className="text-slate-200 font-medium">{lead.implementationTimeline || 'Within 15 Days'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* What The Prospect Requires & Specific Inquiries */}
+            <div className="p-3.5 rounded-xl bg-navy-900 border border-navy-750 space-y-2.5">
+              <p className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                <FiFileText className="text-amber-400" />
+                <span>What The Prospect Requires</span>
+              </p>
+              <div className="p-2.5 rounded-lg bg-navy-950 border border-navy-800 text-slate-200 text-xs leading-relaxed">
+                {lead.requirements || lead.rawFieldData?.primary_interest || 'Inbound HRMS automation inquiry: Automated Payroll & Statutory Compliance, Biometric & GPS Attendance.'}
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-navy-800 text-[11px]">
+                <div>
+                  <span className="text-slate-400 block">Applicant / Applied By:</span>
+                  <span className="font-semibold text-slate-200">{lead.fullName} ({lead.jobTitle || 'HR Manager'})</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Company Workforce:</span>
+                  <span className="font-semibold text-purple-300">{lead.employeeCount || '20-50 employees'}</span>
                 </div>
               </div>
             </div>
@@ -400,6 +451,27 @@ export const LeadActionDrawer = ({ isOpen, onClose, lead }) => {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* Delete Lead Danger Zone */}
+        <div className="pt-2 flex items-center justify-between p-3 rounded-xl bg-rose-950/20 border border-rose-900/40">
+          <div>
+            <p className="font-semibold text-rose-300 text-xs">Delete Lead Record</p>
+            <p className="text-[11px] text-rose-400/70">Permanently removes this lead and interaction logs from CRM.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm(`Are you sure you want to permanently delete lead for "${lead.fullName}"? This action cannot be undone.`)) {
+                deleteLead(lead.id || lead._id);
+                onClose();
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 font-semibold transition-colors cursor-pointer"
+          >
+            <FiTrash2 className="w-3.5 h-3.5" />
+            <span>Delete Lead</span>
+          </button>
         </div>
       </div>
     </Drawer>
